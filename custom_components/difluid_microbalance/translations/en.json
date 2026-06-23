@@ -14,9 +14,10 @@
       },
       "user": {
         "title": "Difluid Device",
-        "description": "Select your Difluid device. Make sure it is powered on and nearby.",
+        "description": "Select your Difluid device. If nothing appears in the list, make sure the device is on and Bluetooth is working in Home Assistant. You can also enter the MAC address manually (format: `AA:BB:CC:DD:EE:FF`) — find it in the official DiFluid app or via **nRF Connect** on your phone.",
         "data": {
-          "address": "Device"
+          "address": "Device (or MAC address)",
+          "device_type": "Device type (for manual entry)"
         }
       }
     },

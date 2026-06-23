@@ -115,16 +115,33 @@ class DifluidMicrobalanceConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+
         if user_input is not None:
-            address = user_input[CONF_ADDRESS]
+            address = user_input[CONF_ADDRESS].strip().upper()
+            device_type_override = user_input.get(CONF_DEVICE_TYPE, DEVICE_TYPE_MICROBALANCE)
             await self.async_set_unique_id(address, raise_on_progress=False)
             self._abort_if_unique_id_configured()
 
             info = self._discovered_devices.get(address)
-            dtype = _device_type(info.service_uuids) if info else DEVICE_TYPE_MICROBALANCE
-            self._discovery_info = info
+            if info is not None:
+                dtype = _device_type(info.service_uuids) or device_type_override
+                self._discovery_info = info
+            else:
+                # Manual MAC entry — trust the user-selected device type
+                dtype = device_type_override
 
             if dtype == DEVICE_TYPE_R2:
+                # Create a minimal discovery_info placeholder for r2_license step
+                self._discovery_info = self._discovered_devices.get(address)
+                if self._discovery_info is None:
+                    # Build a minimal stand-in so r2_license step can read .address
+                    class _FakeInfo:
+                        def __init__(self, addr: str) -> None:
+                            self.address = addr
+                            self.name = f"Difluid R2 ({addr})"
+                            self.service_uuids: list[str] = []
+                    self._discovery_info = _FakeInfo(address)  # type: ignore[assignment]
                 return await self.async_step_r2_license()
 
             is_ti = (
@@ -146,18 +163,29 @@ class DifluidMicrobalanceConfigFlow(ConfigFlow, domain=DOMAIN):
             if info.address not in current and _device_type(info.service_uuids):
                 self._discovered_devices[info.address] = info
 
-        if not self._discovered_devices:
-            return self.async_show_form(
-                step_id="user",
-                data_schema=vol.Schema({vol.Required(CONF_ADDRESS): str}),
-                errors={"base": "no_devices_found"},
+        if self._discovered_devices:
+            choices = {
+                addr: f"{d.name or 'Difluid Device'} ({addr})"
+                for addr, d in self._discovered_devices.items()
+            }
+            schema = vol.Schema({vol.Required(CONF_ADDRESS): vol.In(choices)})
+        else:
+            # No devices found via scan — offer manual MAC entry + device type selector
+            errors["base"] = "no_devices_found"
+            schema = vol.Schema(
+                {
+                    vol.Required(CONF_ADDRESS): str,
+                    vol.Required(CONF_DEVICE_TYPE, default=DEVICE_TYPE_MICROBALANCE): vol.In(
+                        {
+                            DEVICE_TYPE_MICROBALANCE: "Microbalance / Microbalance Ti",
+                            DEVICE_TYPE_R2: "R2 Extract",
+                        }
+                    ),
+                }
             )
 
-        choices = {
-            addr: f"{d.name or 'Difluid Device'} ({addr})"
-            for addr, d in self._discovered_devices.items()
-        }
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema({vol.Required(CONF_ADDRESS): vol.In(choices)}),
+            data_schema=schema,
+            errors=errors,
         )
