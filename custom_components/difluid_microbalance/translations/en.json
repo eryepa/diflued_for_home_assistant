@@ -5,36 +5,36 @@
         "title": "Difluid Microbalance",
         "description": "Do you want to add **{name}** to Home Assistant?"
       },
+      "r2_license": {
+        "title": "Difluid R2 Extract — License",
+        "description": "A **{name}** was found. Enter your DiFluid SDK license key to enable communication. You can get a license key from [digitizefluid.com](https://digitizefluid.com).",
+        "data": {
+          "license_key": "License Key"
+        }
+      },
       "user": {
-        "title": "Difluid Microbalance",
-        "description": "Select your Difluid Microbalance device. Make sure it is powered on and nearby.",
+        "title": "Difluid Device",
+        "description": "Select your Difluid device. Make sure it is powered on and nearby.",
         "data": {
           "address": "Device"
         }
       }
     },
     "error": {
-      "no_devices_found": "No Difluid Microbalance devices were found nearby. Make sure the device is on and in Bluetooth range."
+      "no_devices_found": "No Difluid devices were found nearby. Make sure the device is on and in Bluetooth range.",
+      "invalid_license": "License key is too short. Please enter a valid DiFluid SDK license key."
     },
     "abort": {
       "already_configured": "This device is already configured.",
-      "no_devices_found": "No nearby Difluid Microbalance devices found."
+      "not_supported": "This device is not supported."
     }
   },
   "entity": {
     "sensor": {
-      "weight": {
-        "name": "Weight"
-      },
-      "flow_rate": {
-        "name": "Flow Rate"
-      },
-      "timer": {
-        "name": "Timer"
-      },
-      "battery": {
-        "name": "Battery"
-      },
+      "weight": { "name": "Weight" },
+      "flow_rate": { "name": "Flow Rate" },
+      "timer": { "name": "Timer" },
+      "battery": { "name": "Battery" },
       "charging": {
         "name": "Charging",
         "state": {
@@ -42,9 +42,12 @@
           "idle": "Idle"
         }
       },
-      "device_status": {
-        "name": "Device Status"
-      }
+      "device_status": { "name": "Device Status" },
+      "concentration": { "name": "Concentration (TDS)" },
+      "refractive_index": { "name": "Refractive Index" },
+      "prism_temperature": { "name": "Prism Temperature" },
+      "sample_temperature": { "name": "Sample Temperature" },
+      "test_status": { "name": "Test Status" }
     }
   }
 }

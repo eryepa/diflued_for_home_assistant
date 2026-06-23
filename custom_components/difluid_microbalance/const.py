@@ -1,12 +1,37 @@
 DOMAIN = "difluid_microbalance"
 
+# Microbalance
 SERVICE_UUID_MICROBALANCE = "000000ee-0000-1000-8000-00805f9b34fb"
 CHARACTERISTIC_UUID_MICROBALANCE = "0000ff01-0000-1000-8000-00805f9b34fb"
 
+# Microbalance Ti
 SERVICE_UUID_MICROBALANCE_TI = "000000dd-0000-1000-8000-00805f9b34fb"
 CHARACTERISTIC_UUID_MICROBALANCE_TI = "0000aa01-0000-1000-8000-00805f9b34fb"
 
+# R2 Extract
+SERVICE_UUID_R2 = "000000ff-0000-1000-8000-00805f9b34fb"
+R2_API_URL = "https://cloud-gateway-os.digitizefluid.com/system"
+
 CONF_IS_TI = "is_ti"
+CONF_DEVICE_TYPE = "device_type"
+CONF_LICENSE_KEY = "license_key"
+
+DEVICE_TYPE_MICROBALANCE = "microbalance"
+DEVICE_TYPE_R2 = "r2"
+
+R2_STATUS_MAP = {
+    0: "Test Finished",
+    1: "Calibration Finished",
+    4: "Average Test Start",
+    5: "Average Test Ongoing",
+    6: "Average Test Finished",
+    7: "Loop Test Start",
+    8: "Loop Test Ongoing",
+    9: "Loop Test Finished",
+    10: "Average Test Ongoing",
+    11: "Test Start",
+    12: "Calibration Start",
+}
 
 DEVICE_STATUS_MAP = {
     0: "Power Down",
