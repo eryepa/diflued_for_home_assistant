@@ -5,9 +5,9 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from bleak import BleakClient
 from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak.exc import BleakError
+from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
 
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
@@ -18,8 +18,6 @@ from .const import (
     CHARACTERISTIC_UUID_MICROBALANCE_TI,
     DEVICE_STATUS_MAP,
     DOMAIN,
-    SERVICE_UUID_MICROBALANCE,
-    SERVICE_UUID_MICROBALANCE_TI,
     WEIGHT_UNITS,
 )
 
@@ -38,12 +36,6 @@ _CMD_AUTO_SEND_ON = _build_cmd(0x01, 0x00, bytes([0x01]))
 _CMD_GET_STATUS = _build_cmd(0x03, 0x05)
 
 _STATUS_POLL_INTERVAL = 60
-
-# Preferred communication characteristic per device type (from protocol docs)
-_PREFERRED_CHAR = {
-    SERVICE_UUID_MICROBALANCE: CHARACTERISTIC_UUID_MICROBALANCE,       # FF01
-    SERVICE_UUID_MICROBALANCE_TI: CHARACTERISTIC_UUID_MICROBALANCE_TI, # AA01
-}
 
 
 @dataclass
@@ -67,7 +59,7 @@ class DifluidMicrobalanceCoordinator(DataUpdateCoordinator[MicrobalanceData]):
             CHARACTERISTIC_UUID_MICROBALANCE_TI if is_ti else CHARACTERISTIC_UUID_MICROBALANCE
         )
         self._write_char_uuid: Optional[str] = None
-        self._client: Optional[BleakClient] = None
+        self._client: Optional[BleakClientWithServiceCache] = None
         self._poll_task: Optional[asyncio.Task] = None
         self._reconnect_task: Optional[asyncio.Task] = None
         self.data = MicrobalanceData()
@@ -93,28 +85,30 @@ class DifluidMicrobalanceCoordinator(DataUpdateCoordinator[MicrobalanceData]):
         if ble_device is None:
             raise RuntimeError(f"BLE device {self.address} not found")
 
-        client = BleakClient(ble_device, disconnected_callback=self._on_disconnect)
-        await client.connect()
+        client = await establish_connection(
+            BleakClientWithServiceCache,
+            ble_device,
+            self.address,
+            disconnected_callback=self._on_disconnect,
+        )
         _LOGGER.info("Connected to Difluid Microbalance %s", self.address)
 
-        # Log all discovered services and characteristics for diagnostics
+        # Log discovered services/characteristics to help with diagnostics
         for svc in client.services:
             _LOGGER.info("  Service: %s", svc.uuid)
             for char in svc.characteristics:
                 _LOGGER.info(
-                    "    Characteristic: %s  props=%s",
-                    char.uuid, char.properties,
+                    "    Characteristic: %s  props=%s", char.uuid, char.properties
                 )
 
         write_uuid, notify_uuids = self._pick_characteristics(client)
 
         if not notify_uuids:
+            await client.disconnect()
             raise RuntimeError(
-                "No notifiable characteristics found on device — "
-                "check HA logs (set log level debug for custom_components.difluid_microbalance)"
+                "No notifiable characteristics found — check HA logs for discovered UUIDs"
             )
 
-        # Subscribe to all notification sources (handles both AA01 and FF01 if present)
         for uuid in notify_uuids:
             try:
                 await client.start_notify(uuid, self._on_notification)
@@ -136,14 +130,12 @@ class DifluidMicrobalanceCoordinator(DataUpdateCoordinator[MicrobalanceData]):
         )
 
     def _pick_characteristics(
-        self, client: BleakClient
+        self, client: BleakClientWithServiceCache
     ) -> tuple[str, list[str]]:
-        """Return (write_uuid, [notify_uuids]) choosing the best available chars."""
         all_chars: list[BleakGATTCharacteristic] = [
             c for svc in client.services for c in svc.characteristics
         ]
 
-        # Build sets by property
         notify_chars = [
             c for c in all_chars
             if "notify" in c.properties or "indicate" in c.properties
@@ -153,19 +145,19 @@ class DifluidMicrobalanceCoordinator(DataUpdateCoordinator[MicrobalanceData]):
             if "write-without-response" in c.properties or "write" in c.properties
         ]
 
-        # Prefer the documented characteristic if it exists on the device
+        # Prefer the documented characteristic for writing
         preferred_lower = self._preferred_char_uuid.lower()
-        write_uuid = preferred_lower
-
-        # If preferred not found among write chars, fall back to first writable char
-        write_uuids = {c.uuid.lower() for c in write_chars}
-        if preferred_lower not in write_uuids and write_chars:
+        write_uuids_lower = {c.uuid.lower() for c in write_chars}
+        if preferred_lower in write_uuids_lower:
+            write_uuid = preferred_lower
+        elif write_chars:
             write_uuid = write_chars[0].uuid.lower()
             _LOGGER.warning(
-                "Preferred characteristic %s not found for writing; "
-                "falling back to %s",
+                "Preferred write characteristic %s not found; falling back to %s",
                 preferred_lower, write_uuid,
             )
+        else:
+            write_uuid = preferred_lower  # last resort: try preferred anyway
 
         notify_uuids = [c.uuid.lower() for c in notify_chars]
         return write_uuid, notify_uuids
@@ -181,7 +173,7 @@ class DifluidMicrobalanceCoordinator(DataUpdateCoordinator[MicrobalanceData]):
                 except Exception as err:
                     _LOGGER.debug("Status poll write failed: %s", err)
 
-    def _on_disconnect(self, _client: BleakClient) -> None:
+    def _on_disconnect(self, _client: BleakClientWithServiceCache) -> None:
         _LOGGER.warning("Difluid Microbalance %s disconnected, will retry", self.address)
         if self._poll_task and not self._poll_task.done():
             self._poll_task.cancel()
@@ -200,10 +192,11 @@ class DifluidMicrobalanceCoordinator(DataUpdateCoordinator[MicrobalanceData]):
                 return
             except Exception as err:
                 _LOGGER.debug("Reconnect attempt failed (%ss delay): %s", delay, err)
-        _LOGGER.error("Failed to reconnect to Difluid Microbalance %s after retries", self.address)
+        _LOGGER.error(
+            "Failed to reconnect to Difluid Microbalance %s after retries", self.address
+        )
 
     def _on_notification(self, sender: Any, raw: bytearray) -> None:
-        # Log every raw notification so we can debug unexpected data
         _LOGGER.debug(
             "Notification from %s: %s",
             getattr(sender, "uuid", sender),
@@ -216,7 +209,7 @@ class DifluidMicrobalanceCoordinator(DataUpdateCoordinator[MicrobalanceData]):
 
         func, cmd, data_len = raw[2], raw[3], raw[4]
         if len(raw) < 5 + data_len + 1:
-            _LOGGER.debug("Packet too short (expected %d bytes)", 5 + data_len + 1)
+            _LOGGER.debug("Packet too short (got %d, expected %d)", len(raw), 5 + data_len + 1)
             return
         payload = raw[5 : 5 + data_len]
         updated = False
@@ -237,7 +230,7 @@ class DifluidMicrobalanceCoordinator(DataUpdateCoordinator[MicrobalanceData]):
             updated = True
 
         else:
-            _LOGGER.debug("Unhandled Difluid packet func=0x%02x cmd=0x%02x", func, cmd)
+            _LOGGER.debug("Unhandled packet func=0x%02x cmd=0x%02x", func, cmd)
 
         if updated:
             self.async_set_updated_data(self.data)

@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 import aiohttp
-from bleak import BleakClient
 from bleak.backends.characteristic import BleakGATTCharacteristic
+from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
 
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
@@ -48,7 +48,7 @@ class DifluidR2Coordinator(DataUpdateCoordinator[R2Data]):
         super().__init__(hass, _LOGGER, name=f"{DOMAIN}_r2_{address}", update_interval=None)
         self.address = address
         self.license_key = license_key
-        self._client: Optional[BleakClient] = None
+        self._client: Optional[BleakClientWithServiceCache] = None
         self._char_encrypted: Optional[BleakGATTCharacteristic] = None
         self._char_cleartext: Optional[BleakGATTCharacteristic] = None
         self._auth_response: Optional[asyncio.Future] = None
@@ -77,8 +77,12 @@ class DifluidR2Coordinator(DataUpdateCoordinator[R2Data]):
         if ble_device is None:
             raise RuntimeError(f"BLE device {self.address} not found")
 
-        client = BleakClient(ble_device, disconnected_callback=self._on_disconnect)
-        await client.connect()
+        client = await establish_connection(
+            BleakClientWithServiceCache,
+            ble_device,
+            self.address,
+            disconnected_callback=self._on_disconnect,
+        )
         _LOGGER.debug("Connected to Difluid R2 %s", self.address)
 
         # Find the two NOTIFY+WRITE characteristics of the R2 service
@@ -256,7 +260,7 @@ class DifluidR2Coordinator(DataUpdateCoordinator[R2Data]):
         if updated:
             self.async_set_updated_data(self.data)
 
-    def _on_disconnect(self, _client: BleakClient) -> None:
+    def _on_disconnect(self, _client: BleakClientWithServiceCache) -> None:
         _LOGGER.warning("Difluid R2 %s disconnected, will retry", self.address)
         if self._reconnect_task and not self._reconnect_task.done():
             return
