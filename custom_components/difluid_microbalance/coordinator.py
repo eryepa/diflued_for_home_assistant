@@ -200,7 +200,7 @@ class DifluidMicrobalanceCoordinator(DataUpdateCoordinator[MicrobalanceData]):
                     )
                 tick += 1
             except Exception as err:
-                _LOGGER.debug("Poll write failed: %s", err)
+                _LOGGER.warning("Poll write failed (tick %d): %s", tick, err)
 
     def _on_disconnect(self, _client: BleakClientWithServiceCache) -> None:
         _LOGGER.warning("Difluid Microbalance %s disconnected, will retry", self.address)
@@ -226,19 +226,22 @@ class DifluidMicrobalanceCoordinator(DataUpdateCoordinator[MicrobalanceData]):
         )
 
     def _on_notification(self, sender: Any, raw: bytearray) -> None:
-        _LOGGER.debug(
+        _LOGGER.info(
             "Notification from %s: %s",
             getattr(sender, "uuid", sender),
             raw.hex(),
         )
 
         if len(raw) < 6 or raw[0] != 0xDF or raw[1] != 0xDF:
-            _LOGGER.debug("Ignoring non-Difluid packet: %s", raw.hex())
+            _LOGGER.warning("Non-Difluid packet on BLE notify: %s", raw.hex())
             return
 
         func, cmd, data_len = raw[2], raw[3], raw[4]
         if len(raw) < 5 + data_len + 1:
-            _LOGGER.debug("Packet too short (got %d, expected %d)", len(raw), 5 + data_len + 1)
+            _LOGGER.warning(
+                "Packet too short (got %d, expected %d): %s",
+                len(raw), 5 + data_len + 1, raw.hex(),
+            )
             return
         payload = raw[5 : 5 + data_len]
         updated = False
@@ -259,7 +262,10 @@ class DifluidMicrobalanceCoordinator(DataUpdateCoordinator[MicrobalanceData]):
             updated = True
 
         else:
-            _LOGGER.debug("Unhandled packet func=0x%02x cmd=0x%02x", func, cmd)
+            _LOGGER.warning(
+                "Unhandled Difluid packet func=0x%02x cmd=0x%02x payload=%s",
+                func, cmd, raw.hex(),
+            )
 
         if updated:
             self.async_set_updated_data(self.data)
