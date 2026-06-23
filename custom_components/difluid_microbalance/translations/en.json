@@ -1,0 +1,50 @@
+{
+  "config": {
+    "step": {
+      "bluetooth_confirm": {
+        "title": "Difluid Microbalance",
+        "description": "Do you want to add **{name}** to Home Assistant?"
+      },
+      "user": {
+        "title": "Difluid Microbalance",
+        "description": "Select your Difluid Microbalance device. Make sure it is powered on and nearby.",
+        "data": {
+          "address": "Device"
+        }
+      }
+    },
+    "error": {
+      "no_devices_found": "No Difluid Microbalance devices were found nearby. Make sure the device is on and in Bluetooth range."
+    },
+    "abort": {
+      "already_configured": "This device is already configured.",
+      "no_devices_found": "No nearby Difluid Microbalance devices found."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "weight": {
+        "name": "Weight"
+      },
+      "flow_rate": {
+        "name": "Flow Rate"
+      },
+      "timer": {
+        "name": "Timer"
+      },
+      "battery": {
+        "name": "Battery"
+      },
+      "charging": {
+        "name": "Charging",
+        "state": {
+          "charging": "Charging",
+          "idle": "Idle"
+        }
+      },
+      "device_status": {
+        "name": "Device Status"
+      }
+    }
+  }
+}
