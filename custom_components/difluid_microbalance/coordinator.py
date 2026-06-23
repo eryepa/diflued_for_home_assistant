@@ -119,8 +119,9 @@ class DifluidMicrobalanceCoordinator(DataUpdateCoordinator[MicrobalanceData]):
         self._write_char_uuid = write_uuid
         _LOGGER.info("Using %s for write commands", write_uuid)
 
-        await client.write_gatt_char(write_uuid, _CMD_AUTO_SEND_ON, response=False)
-        await client.write_gatt_char(write_uuid, _CMD_GET_STATUS, response=False)
+        # Use response=True because the characteristic has 'write' (not 'write-without-response')
+        await client.write_gatt_char(write_uuid, _CMD_AUTO_SEND_ON, response=True)
+        await client.write_gatt_char(write_uuid, _CMD_GET_STATUS, response=True)
         self._client = client
 
         if self._poll_task and not self._poll_task.done():
@@ -132,20 +133,27 @@ class DifluidMicrobalanceCoordinator(DataUpdateCoordinator[MicrobalanceData]):
     def _pick_characteristics(
         self, client: BleakClientWithServiceCache
     ) -> tuple[str, list[str]]:
-        all_chars: list[BleakGATTCharacteristic] = [
-            c for svc in client.services for c in svc.characteristics
+        # Only consider characteristics from the Difluid service (000000ee / 000000dd),
+        # ignoring standard BLE services (00001800, 00001801, etc.)
+        difluid_chars: list[BleakGATTCharacteristic] = [
+            c
+            for svc in client.services
+            for c in svc.characteristics
+            if svc.uuid.lower() in (
+                "000000ee-0000-1000-8000-00805f9b34fb",
+                "000000dd-0000-1000-8000-00805f9b34fb",
+            )
         ]
 
         notify_chars = [
-            c for c in all_chars
+            c for c in difluid_chars
             if "notify" in c.properties or "indicate" in c.properties
         ]
         write_chars = [
-            c for c in all_chars
-            if "write-without-response" in c.properties or "write" in c.properties
+            c for c in difluid_chars
+            if "write" in c.properties or "write-without-response" in c.properties
         ]
 
-        # Prefer the documented characteristic for writing
         preferred_lower = self._preferred_char_uuid.lower()
         write_uuids_lower = {c.uuid.lower() for c in write_chars}
         if preferred_lower in write_uuids_lower:
@@ -157,7 +165,7 @@ class DifluidMicrobalanceCoordinator(DataUpdateCoordinator[MicrobalanceData]):
                 preferred_lower, write_uuid,
             )
         else:
-            write_uuid = preferred_lower  # last resort: try preferred anyway
+            write_uuid = preferred_lower
 
         notify_uuids = [c.uuid.lower() for c in notify_chars]
         return write_uuid, notify_uuids
@@ -168,7 +176,7 @@ class DifluidMicrobalanceCoordinator(DataUpdateCoordinator[MicrobalanceData]):
             if self._client and self._client.is_connected and self._write_char_uuid:
                 try:
                     await self._client.write_gatt_char(
-                        self._write_char_uuid, _CMD_GET_STATUS, response=False
+                        self._write_char_uuid, _CMD_GET_STATUS, response=True
                     )
                 except Exception as err:
                     _LOGGER.debug("Status poll write failed: %s", err)
