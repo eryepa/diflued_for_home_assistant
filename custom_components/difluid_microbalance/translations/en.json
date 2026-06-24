@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "bluetooth_confirm": {
+        "title": "Difluid Microbalance",
+        "description": "Do you want to add **{name}** to Home Assistant?"
+      },
+      "r2_license": {
+        "title": "Difluid R2 Extract — License",
+        "description": "A **{name}** was found. Enter your DiFluid SDK license key to enable communication. You can get a license key from [digitizefluid.com](https://digitizefluid.com).",
+        "data": {
+          "license_key": "License Key"
+        }
+      },
+      "user": {
+        "title": "Difluid Device",
+        "description": "Select your Difluid device. If nothing appears in the list, make sure the device is on and Bluetooth is working in Home Assistant. You can also enter the MAC address manually (format: `AA:BB:CC:DD:EE:FF`) — find it in the official DiFluid app or via **nRF Connect** on your phone.",
+        "data": {
+          "address": "Device (or MAC address)",
+          "device_type": "Device type (for manual entry)"
+        }
+      }
+    },
+    "error": {
+      "no_devices_found": "No Difluid devices were found nearby. Make sure the device is on and in Bluetooth range.",
+      "invalid_license": "License key is too short. Please enter a valid DiFluid SDK license key."
+    },
+    "abort": {
+      "already_configured": "This device is already configured.",
+      "not_supported": "This device is not supported."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "weight": { "name": "Weight" },
+      "flow_rate": { "name": "Flow Rate" },
+      "timer": { "name": "Timer" },
+      "battery": { "name": "Battery" },
+      "charging": {
+        "name": "Charging",
+        "state": {
+          "charging": "Charging",
+          "idle": "Idle"
+        }
+      },
+      "device_status": { "name": "Device Status" },
+      "concentration": { "name": "Concentration (TDS)" },
+      "refractive_index": { "name": "Refractive Index" },
+      "prism_temperature": { "name": "Prism Temperature" },
+      "sample_temperature": { "name": "Sample Temperature" },
+      "test_status": { "name": "Test Status" }
+    }
+  }
+}
