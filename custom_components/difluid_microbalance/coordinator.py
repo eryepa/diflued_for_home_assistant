@@ -133,21 +133,12 @@ class DifluidMicrobalanceCoordinator(DataUpdateCoordinator[MicrobalanceData]):
         self._write_char_uuid = write_uuid
         _LOGGER.info("Using %s for write commands", write_uuid)
 
-        # Verify device responds to direct reads before relying on notifications
-        for char_uuid in [c.uuid.lower() for c in difluid_chars]:
-            try:
-                test = await client.read_gatt_char(char_uuid)
-                _LOGGER.info("Direct read from %s: %s (%d bytes)", char_uuid, test.hex(), len(test))
-            except Exception as read_err:
-                _LOGGER.warning("Direct read from %s failed: %s", char_uuid, read_err)
-
-        _LOGGER.info("Writing auto-send enable command (response=False)…")
+        # Enable continuous sensor-data streaming via notifications, then request
+        # an initial status. We intentionally avoid reading characteristics here:
+        # reads return only the echo of the last command and add link traffic.
         await client.write_gatt_char(write_uuid, _CMD_AUTO_SEND_ON, response=False)
-        _LOGGER.info("Auto-send enable command written OK")
-
-        _LOGGER.info("Writing get-status command…")
         await client.write_gatt_char(write_uuid, _CMD_GET_STATUS, response=False)
-        _LOGGER.info("Get-status command written OK")
+        _LOGGER.info("Auto-send enabled; waiting for notifications")
 
         self._client = client
 
@@ -198,41 +189,27 @@ class DifluidMicrobalanceCoordinator(DataUpdateCoordinator[MicrobalanceData]):
         return write_uuid, notify_uuids
 
     async def _poll_loop(self) -> None:
-        """Poll sensor data and status via write-then-read pattern.
+        """Lightweight status poll — battery/charge only, every 30 s.
 
-        ESPHome Bluetooth Proxy forwards writes and reads correctly but may
-        not forward GATT notify callbacks. We work around this by explicitly
-        reading the characteristic value 150 ms after each command write.
-        Genuine BLE notifications (if they start working) are also handled
-        by _on_notification.
+        Sensor data (weight/flow/timer) arrives via BLE notifications because
+        AUTO_SEND is enabled at connect time. We deliberately do NOT read or
+        poll the sensor characteristic: reading it only returns an echo of the
+        last written command, and frequent read/write traffic over a marginal
+        ESPHome Bluetooth Proxy link saturates the connection and suppresses
+        the notification stream. A single status write every 30 s is enough to
+        refresh battery state without disturbing notifications.
         """
-        tick = 0
         while True:
-            await asyncio.sleep(_DATA_POLL_INTERVAL)
+            await asyncio.sleep(_STATUS_POLL_INTERVAL)
             client = self._client
             if client is None or not client.is_connected or not self._write_char_uuid:
                 continue
             try:
-                # Choose command: status every STATUS_POLL_INTERVAL, data otherwise
-                cmd = (
-                    _CMD_GET_STATUS
-                    if tick % (_STATUS_POLL_INTERVAL // _DATA_POLL_INTERVAL) == 0
-                    else _CMD_GET_SENSOR_DATA
+                await client.write_gatt_char(
+                    self._write_char_uuid, _CMD_GET_STATUS, response=False
                 )
-                await client.write_gatt_char(self._write_char_uuid, cmd, response=False)
-                # Wait for device to prepare the response, then read all Difluid characteristics
-                await asyncio.sleep(0.15)
-                for char_uuid in self._all_difluid_char_uuids:
-                    try:
-                        raw = bytearray(await client.read_gatt_char(char_uuid))
-                        if raw and len(raw) >= 6 and raw[0] == 0xDF and raw[1] == 0xDF:
-                            _LOGGER.info("Poll-read from %s: %s", char_uuid, raw.hex())
-                            self._on_notification(None, raw)
-                    except Exception as read_err:
-                        _LOGGER.warning("Poll read failed (%s tick %d): %s", char_uuid, tick, read_err)
-                tick += 1
             except Exception as err:
-                _LOGGER.warning("Poll write failed (tick %d): %s", tick, err)
+                _LOGGER.warning("Status poll write failed: %s", err)
 
     def _on_disconnect(self, _client: BleakClientWithServiceCache) -> None:
         _LOGGER.warning("Difluid Microbalance %s disconnected, will retry", self.address)
