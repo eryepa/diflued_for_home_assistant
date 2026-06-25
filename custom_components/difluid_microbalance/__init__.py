@@ -3,7 +3,6 @@ from __future__ import annotations
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import (
     CONF_DEVICE_TYPE,
@@ -18,7 +17,7 @@ from .const import (
 from .coordinator import DifluidMicrobalanceCoordinator
 from .coordinator_r2 import DifluidR2Coordinator
 
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS = [Platform.SENSOR, Platform.BUTTON, Platform.NUMBER, Platform.SELECT]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -43,15 +42,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             model=entry.data.get(CONF_MODEL) or default_model,
         )
 
-    try:
-        await coordinator.async_start()
-    except Exception as err:
-        raise ConfigEntryNotReady(
-            f"Cannot connect to Difluid device {address}: {err}"
-        ) from err
-
+    # Register coordinator before forwarding platforms so entity setup can access it.
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # async_start never raises — if device is off it silently waits for BLE advertisement.
+    await coordinator.async_start()
     return True
 
 

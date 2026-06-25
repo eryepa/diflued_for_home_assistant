@@ -55,6 +55,26 @@
       "prism_temperature": { "name": "Prism Temperature" },
       "sample_temperature": { "name": "Sample Temperature" },
       "test_status": { "name": "Test Status" }
+    },
+    "button": {
+      "tare": { "name": "Tare" },
+      "power_off": { "name": "Power Off" }
+    },
+    "number": {
+      "auto_shutdown": {
+        "name": "Auto Shutdown",
+        "unit_of_measurement": "min"
+      }
+    },
+    "select": {
+      "mode": {
+        "name": "Mode",
+        "state": {
+          "Manual": "Manual",
+          "Espresso": "Espresso",
+          "Pour Over": "Pour Over"
+        }
+      }
     }
   }
 }

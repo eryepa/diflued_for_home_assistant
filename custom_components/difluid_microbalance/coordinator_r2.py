@@ -9,8 +9,16 @@ import aiohttp
 from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
 
 from homeassistant.components import bluetooth
-from homeassistant.core import HomeAssistant
+from homeassistant.components.bluetooth import (
+    BluetoothChange,
+    BluetoothCallbackMatcher,
+    BluetoothScanningMode,
+    BluetoothServiceInfoBleak,
+)
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+
+from typing import Callable
 
 from .const import DOMAIN, DEFAULT_MODEL_R2, R2_API_URL, R2_DEFAULT_LICENSE_KEY, R2_STATUS_MAP
 
@@ -55,14 +63,30 @@ class DifluidR2Coordinator(DataUpdateCoordinator[R2Data]):
         self._auth_response: Optional[asyncio.Future] = None
         self._direct_probe: Optional[asyncio.Future] = None
         self._reconnect_task: Optional[asyncio.Task] = None
+        self._bt_cancel: Optional[Callable] = None
         self._sn: str = ""
         self._mac: str = ""
         self.data = R2Data()
 
     async def async_start(self) -> None:
-        await self._do_connect()
+        self._bt_cancel = bluetooth.async_register_callback(
+            self.hass,
+            self._on_bt_advertisement,
+            BluetoothCallbackMatcher(address=self.address),
+            BluetoothScanningMode.ACTIVE,
+        )
+        try:
+            await self._do_connect()
+        except Exception as err:
+            _LOGGER.info(
+                "R2 %s not available at startup (%s) — will connect when seen in BLE scan",
+                self.address, err,
+            )
 
     async def async_stop(self) -> None:
+        if self._bt_cancel:
+            self._bt_cancel()
+            self._bt_cancel = None
         if self._reconnect_task and not self._reconnect_task.done():
             self._reconnect_task.cancel()
         if self._client and self._client.is_connected:
@@ -71,6 +95,30 @@ class DifluidR2Coordinator(DataUpdateCoordinator[R2Data]):
             except Exception:
                 pass
         self._client = None
+
+    @callback
+    def _on_bt_advertisement(
+        self,
+        service_info: BluetoothServiceInfoBleak,
+        change: BluetoothChange,
+    ) -> None:
+        if self._client and self._client.is_connected:
+            return
+        if self._reconnect_task and not self._reconnect_task.done():
+            self._reconnect_task.cancel()
+        _LOGGER.info("R2 %s detected in BLE scan, connecting…", self.address)
+        self._reconnect_task = self.hass.async_create_task(
+            self._connect_once(), eager_start=False
+        )
+
+    async def _connect_once(self) -> None:
+        try:
+            await self._do_connect()
+        except Exception as err:
+            _LOGGER.debug("BT-triggered R2 connection to %s failed: %s; resuming retry loop", self.address, err)
+            self._reconnect_task = self.hass.async_create_task(
+                self._reconnect_loop(), eager_start=False
+            )
 
     async def _do_connect(self) -> None:
         ble_device = bluetooth.async_ble_device_from_address(
