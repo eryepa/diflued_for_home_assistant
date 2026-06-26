@@ -455,15 +455,22 @@ class DifluidR2Coordinator(DataUpdateCoordinator[R2Data]):
         )
 
     async def _reconnect_loop(self) -> None:
-        for delay in (5, 15, 30, 60, 120):
+        import time as _time
+        delay = 5
+        while True:
             await asyncio.sleep(delay)
+            remaining = self._no_reconnect_until - _time.monotonic()
+            if remaining > 0:
+                await asyncio.sleep(remaining + 1)
+                delay = 5
+                continue
             try:
                 await self._do_connect()
                 _LOGGER.info("Reconnected to Difluid R2 %s", self.address)
                 return
             except Exception as err:
                 _LOGGER.debug("R2 reconnect failed (%ss): %s", delay, err)
-        _LOGGER.error("Failed to reconnect to Difluid R2 %s after retries", self.address)
+                delay = min(120, delay * 2)
 
     async def _async_update_data(self) -> R2Data:
         return self.data

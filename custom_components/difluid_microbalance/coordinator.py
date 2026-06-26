@@ -129,12 +129,14 @@ class DifluidMicrobalanceCoordinator(DataUpdateCoordinator[MicrobalanceData]):
         The scale has a hardware auto-off timer that fires when no BLE client
         is connected.  Dropping the connection and holding off reconnect for
         60 seconds gives the device time to power itself off.
+
+        After the cooldown a _reconnect_loop is started so the integration
+        reconnects when the scale is turned on again — even if the BT
+        advertisement callback doesn't fire (device still in HA BT cache).
         """
         import time as _time
-        # Suppress auto-reconnect for 60 seconds.
         self._no_reconnect_until = _time.monotonic() + 60.0
 
-        # Cancel any sleeping reconnect task immediately.
         if self._reconnect_task and not self._reconnect_task.done():
             self._reconnect_task.cancel()
 
@@ -145,6 +147,24 @@ class DifluidMicrobalanceCoordinator(DataUpdateCoordinator[MicrobalanceData]):
             except Exception:
                 pass
         _LOGGER.info("Power-off: BLE disconnected, reconnect suppressed for 60 s")
+
+        # After the cooldown, proactively start the reconnect loop so we
+        # reconnect when the scale is turned on — the BT advertisement callback
+        # may miss the first advertisement if the device is still in HA's cache.
+        self._reconnect_task = self.hass.async_create_task(
+            self._reconnect_loop_after_poweroff(), eager_start=False
+        )
+
+    async def _reconnect_loop_after_poweroff(self) -> None:
+        """Wait for the power-off cooldown to expire, then start reconnecting."""
+        import time as _time
+        remaining = self._no_reconnect_until - _time.monotonic()
+        if remaining > 0:
+            await asyncio.sleep(remaining + 1)  # +1 s buffer
+        if self._client and self._client.is_connected:
+            return  # BT callback already reconnected us
+        _LOGGER.info("Power-off cooldown expired; starting reconnect loop")
+        await self._reconnect_loop()
 
     def set_auto_shutdown_minutes(self, minutes: int) -> None:
         self._auto_shutdown_minutes = max(0, minutes)
@@ -399,15 +419,23 @@ class DifluidMicrobalanceCoordinator(DataUpdateCoordinator[MicrobalanceData]):
         )
 
     async def _reconnect_loop(self) -> None:
-        for delay in (5, 15, 30, 60, 120):
+        import time as _time
+        delay = 5
+        while True:
             await asyncio.sleep(delay)
+            # Respect power-off cooldown even if the loop was already running.
+            remaining = self._no_reconnect_until - _time.monotonic()
+            if remaining > 0:
+                await asyncio.sleep(remaining + 1)
+                delay = 5
+                continue
             try:
                 await self._do_connect()
                 _LOGGER.info("Reconnected to Difluid Microbalance %s", self.address)
                 return
             except Exception as err:
-                _LOGGER.debug("Reconnect attempt failed (%ss delay): %s", delay, err)
-        _LOGGER.error("Failed to reconnect to Difluid Microbalance %s after retries", self.address)
+                _LOGGER.debug("Reconnect attempt failed (%ss): %s", delay, err)
+                delay = min(120, delay * 2)  # 5 → 10 → 20 → 40 → 80 → 120 s cap
 
     # ── notification handler ──────────────────────────────────────────────────
 
