@@ -2,34 +2,27 @@
   "config": {
     "step": {
       "bluetooth_confirm": {
-        "title": "Difluid Microbalance",
-        "description": "Do you want to add **{name}** to Home Assistant?\n\nEncrypted firmware is handled automatically — no license key required. Leave both fields blank.",
-        "data": {
-          "license_key": "License Key (leave blank — no longer required)",
-          "model": "Model override (optional, e.g. DFT-S101)"
-        }
-      },
-      "r2_license": {
-        "title": "Difluid R2 Extract",
-        "description": "A **{name}** was found. Leave the License Key blank to use the built-in default key. Only fill it in if you have your own DiFluid SDK license key.",
-        "data": {
-          "license_key": "License Key (optional, leave blank for default)"
-        }
+        "title": "DiFluid Device Found",
+        "description": "Add **{name}** to Home Assistant?"
       },
       "user": {
-        "title": "Difluid Device",
-        "description": "Select your Difluid device. If nothing appears in the list, make sure the device is on and Bluetooth is working in Home Assistant. You can also enter the MAC address manually (format: `AA:BB:CC:DD:EE:FF`) — find it in the official DiFluid app or via **nRF Connect** on your phone.\n\nEncrypted firmware is handled automatically — leave License Key and Model blank.",
+        "title": "Add DiFluid Device",
+        "description": "Select a nearby DiFluid device, or choose **Enter MAC address manually** if nothing appears.",
         "data": {
-          "address": "Device (or MAC address)",
-          "device_type": "Device type (for manual entry)",
-          "license_key": "License Key (leave blank — no longer required)",
-          "model": "Model override (optional, e.g. DFT-S101)"
+          "address": "Device"
+        }
+      },
+      "mac": {
+        "title": "Add DiFluid Device (MAC)",
+        "description": "Enter the Bluetooth MAC address of your DiFluid device (format: `AA:BB:CC:DD:EE:FF`). Find it in the DiFluid app or via nRF Connect.",
+        "data": {
+          "address": "MAC Address",
+          "device_type": "Device Type"
         }
       }
     },
     "error": {
-      "no_devices_found": "No Difluid devices were found nearby. Make sure the device is on and in Bluetooth range.",
-      "invalid_license": "License key is too short. Please enter a valid DiFluid SDK license key."
+      "invalid_address": "Invalid MAC address format. Use AA:BB:CC:DD:EE:FF."
     },
     "abort": {
       "already_configured": "This device is already configured.",
@@ -44,10 +37,7 @@
       "battery": { "name": "Battery" },
       "charging": {
         "name": "Charging",
-        "state": {
-          "charging": "Charging",
-          "idle": "Idle"
-        }
+        "state": { "charging": "Charging", "idle": "Idle" }
       },
       "device_status": { "name": "Device Status" },
       "concentration": { "name": "Concentration (TDS)" },
@@ -61,10 +51,7 @@
       "power_off": { "name": "Power Off" }
     },
     "number": {
-      "auto_shutdown": {
-        "name": "Auto Shutdown",
-        "unit_of_measurement": "min"
-      }
+      "auto_shutdown": { "name": "Auto Shutdown" }
     },
     "select": {
       "mode": {
